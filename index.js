@@ -67,6 +67,11 @@ function buildICS({ events = [], calName = 'HLTV Matches', prodId = '-//hltv-ica
     if (ev.summary) lines.push(foldIcsLine(`SUMMARY:${icsEscape(ev.summary)}`));
     if (ev.description) lines.push(foldIcsLine(`DESCRIPTION:${icsEscape(ev.description)}`));
     if (ev.url) lines.push(foldIcsLine(`URL:${icsEscape(ev.url)}`));
+    lines.push('BEGIN:VALARM');
+    lines.push('ACTION:DISPLAY');
+    lines.push(foldIcsLine(`DESCRIPTION:${icsEscape(ev.summary || 'HLTV Match')}`));
+    lines.push('TRIGGER:-PT15M');
+    lines.push('END:VALARM');
     lines.push('END:VEVENT');
   }
   lines.push('END:VCALENDAR');
