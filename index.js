@@ -12,10 +12,52 @@ const cheerio = require('cheerio');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const FLARESOLVERR_URL = process.env.FLARESOLVERR_URL || 'http://flaresolverr:8191';
 
 // Basic in-memory cache to avoid hammering HLTV.
 const CACHE = new Map();
 const CACHE_TTL_MS = 60 * 60 * 1000; // 60 minutes
+
+let FLARESOLVERR_SESSION = null;
+
+async function createFlareSolverrSession() {
+  try {
+    const res = await fetch(`${FLARESOLVERR_URL}/v1`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cmd: 'sessions.create',
+      }),
+    });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      FLARESOLVERR_SESSION = data.session;
+      console.log(`FlareSolverr session created: ${FLARESOLVERR_SESSION}`);
+    } else {
+      console.error('Failed to create FlareSolverr session:', data.message);
+    }
+  } catch (err) {
+    console.error('Error creating FlareSolverr session:', err);
+  }
+}
+
+async function destroyFlareSolverrSession() {
+  if (!FLARESOLVERR_SESSION) return;
+  try {
+    await fetch(`${FLARESOLVERR_URL}/v1`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cmd: 'sessions.destroy',
+        session: FLARESOLVERR_SESSION,
+      }),
+    });
+    console.log(`FlareSolverr session destroyed: ${FLARESOLVERR_SESSION}`);
+    FLARESOLVERR_SESSION = null;
+  } catch (err) {
+    console.error('Error destroying FlareSolverr session:', err);
+  }
+}
 
 function nowUtcISOString() {
   return new Date().toISOString();
@@ -82,15 +124,33 @@ async function fetchWithCache(url) {
   const cached = CACHE.get(url);
   const now = Date.now();
   if (cached && now - cached.ts < CACHE_TTL_MS) return cached.body;
-  const res = await fetch(url, {
+
+  const payload = {
+    cmd: 'request.get',
+    url: url,
+    maxTimeout: 60000,
+  };
+
+  if (FLARESOLVERR_SESSION) {
+    payload.session = FLARESOLVERR_SESSION;
+  }
+
+  const res = await fetch(`${FLARESOLVERR_URL}/v1`, {
+    method: 'POST',
     headers: {
-      'User-Agent': 'HLTV-iCal/1.0 (+https://example.com) Node.js',
-      'Accept': 'text/html,application/xhtml+xml',
-      'Accept-Language': 'en-GB,en;q=0.9',
+      'Content-Type': 'application/json',
     },
+    body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status} ${res.statusText}`);
-  const text = await res.text();
+
+  if (!res.ok) throw new Error(`FlareSolverr request failed: ${res.status} ${res.statusText}`);
+
+  const data = await res.json();
+  if (data.status !== 'ok') {
+    throw new Error(`FlareSolverr error: ${data.message || 'Unknown error'}`);
+  }
+
+  const text = data.solution.response;
   CACHE.set(url, { ts: now, body: text });
   return text;
 }
@@ -167,6 +227,19 @@ app.get(['/team/:id/:slug.ics', '/team/:id.ics'], async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`HLTV iCal service listening on http://localhost:${PORT}`);
+  await createFlareSolverrSession();
+});
+
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, cleaning up...');
+  await destroyFlareSolverrSession();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received, cleaning up...');
+  await destroyFlareSolverrSession();
+  process.exit(0);
 });
