@@ -128,7 +128,7 @@ async function fetchWithCache(url) {
   const payload = {
     cmd: 'request.get',
     url: url,
-    maxTimeout: 60000,
+    maxTimeout: 120000,
   };
 
   if (FLARESOLVERR_SESSION) {
