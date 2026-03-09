@@ -17,7 +17,7 @@ const USE_FLARESOLVERR = process.env.USE_FLARESOLVERR !== 'false';
 
 // Basic in-memory cache to avoid hammering HLTV.
 const CACHE = new Map();
-const CACHE_TTL_MS = 60 * 60 * 1000; // 60 minutes
+const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 let FLARESOLVERR_SESSION = null;
 
